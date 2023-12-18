@@ -14,20 +14,22 @@ client = OpenAI(
 parser = argparse.ArgumentParser(description='A snarky Python script with argparse.')
 
 parser.add_argument('--query', help='GPT query.')
+parser.add_argument('--passthrough', action='store_true', help='Passes throught the query')
 
 args = parser.parse_args()
 
-chat_completion = client.chat.completions.create(
-    messages=[
-        {
-            "role": "user",
-            "content": PROMPT+args.query,
-        }
-    ],
-    model="gpt-3.5-turbo",
-)
-
-gpt_response = chat_completion.choices[0].message.content
+gpt_response = args.query
+if not args.passthrough:
+  chat_completion = client.chat.completions.create(
+      messages=[
+          {
+              "role": "user",
+              "content": PROMPT+args.query+"!!",
+          }
+      ],
+      model="gpt-3.5-turbo",
+  )
+  gpt_response = chat_completion.choices[0].message.content
 
 print(gpt_response)
 
