@@ -1,4 +1,11 @@
+numpy
 elevenlabs
+openai-whisper
 openai
 ffmpeg
 mpv
+evdev
+adafruit-circuitpython-servokit
+pvporcupine
+pvrecorder
+pvcheetah

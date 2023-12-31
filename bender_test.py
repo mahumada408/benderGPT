@@ -37,11 +37,20 @@ user = User.from_api()
 left = user.subscription.character_limit - user.subscription.character_count
 print(left)
 
+# audio = generate(
+#   text=gpt_response,
+#   voice=Voice(
+#     voice_id="NILGfKSMoeL1zMLuhhAI",
+#     settings=VoiceSettings(stability=0.18, similarity_boost=0.75, style=0.5, use_speaker_boost=True)
+#   ),
+#   model="eleven_multilingual_v2",
+#   stream=True,
+# )
+
 audio = generate(
   text=gpt_response,
   voice=Voice(
     voice_id="NILGfKSMoeL1zMLuhhAI",
-    settings=VoiceSettings(stability=0.18, similarity_boost=0.75, style=0.5, use_speaker_boost=True)
   ),
   model="eleven_multilingual_v2",
   stream=True,
