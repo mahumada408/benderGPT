@@ -1,0 +1,2 @@
+for audio visualization
+- audo needs to be in .wav format, 8000Hz sampling rate, and mono
