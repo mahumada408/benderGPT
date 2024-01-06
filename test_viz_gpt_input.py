@@ -10,17 +10,20 @@ import threading
 def moving_average(data, window_size=5):
     return np.convolve(data, np.ones(window_size) / window_size, mode='same')
 
-# Function to discretize FFT data for a 7x16 display
-def discretize_fft(fft_data, num_bands=16, num_rows=7):
+# Function to discretize FFT data for a 7x16 display, centered on the y-axis
+def discretize_fft(fft_data, num_bands=8, num_rows=7):
     band_width = len(fft_data) // num_bands
     discretized = np.zeros(num_bands)
     for i in range(num_bands):
         start = i * band_width
         end = start + band_width
         discretized[i] = np.mean(fft_data[start:end])
-    discretized = np.clip(discretized / np.max(discretized), 0, 1)  # Normalize to [0, 1]
-    discretized = (discretized * num_rows).astype(int)  # Scale to 0-6
-    return discretized
+    max_val = np.max(discretized)
+    if max_val > 0:
+        discretized = discretized / max_val  # Normalize to [0, 1]
+    # Scale to fit in num_rows and center on the y-axis
+    discretized = discretized * (num_rows / 2) + (num_rows / 4) 
+    return discretized.astype(int)
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
@@ -41,18 +44,33 @@ full_res_mode = args.mode == 'full'
 fig, ax = plt.subplots()
 frames_per_buffer = 512  # Adjust as needed
 x_freq = np.fft.rfftfreq(frames_per_buffer, 1 / frame_rate)
+
+# # Create a background grid of yellow points for the 7x16 matrix
+# x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
+# ax.scatter(x_grid, y_grid, color='yellow')  # Background grid in yellow
+
+# Create a background grid of yellow points for the 7x16 matrix, with black lines at -5, 0, and 5
+x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
+colors = np.full(x_grid.shape, 'yellow')  # Default color
+colors[:, x_grid[0] == -5] = 'black'  # Line at x = -5
+colors[:, x_grid[0] == 0] = 'black'   # Line at x = 0
+colors[:, x_grid[0] == 5] = 'black'   # Line at x = 5
+for x, y, c in zip(x_grid.flatten(), y_grid.flatten(), colors.flatten()):
+    ax.scatter(x, y, color=c)
+
+
 if full_res_mode:
     x_freq = np.concatenate((-x_freq[:0:-1], x_freq))  # Symmetric frequency axis for full resolution
     line, = ax.plot(x_freq, np.zeros(len(x_freq)))
     ax.set_ylim(-1, 1)  # Centered around y-axis
     ax.set_xlim(-frame_rate // 2, frame_rate // 2)  # Full symmetric frequency range
 else:
-    line, = ax.plot(np.zeros(16), np.zeros(16), 'ro')  # 16 points for 16 frequency bands (8 mirrored)
-    ax.set_ylim(0, 7)  # 7 rows of pixels
+    line, = ax.plot(np.zeros(16), np.zeros(16), 'ko')  # 16 points for 16 frequency bands (8 mirrored)
+    ax.set_ylim(-1, 7)  # 7 rows of pixels
     ax.set_xlim(-8, 7)  # 8 columns of pixels mirrored
 ax.set_xlabel('Frequency')
 ax.set_ylabel('Magnitude')
-ax.grid(True)
+# ax.grid(True)
 
 # Function to play audio chunk
 def play_audio_chunk(chunk):
@@ -80,7 +98,7 @@ def update_plot(frame):
         discretized_fft = discretize_fft(smoothed_fft, num_bands=8, num_rows=7)
         mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))  # Mirror the data
         x_pos = np.arange(-8, 8)  # Adjusted x positions for 16 points
-        line.set_data(x_pos, mirrored_fft)
+        line.set_data(x_pos, mirrored_fft)  # Center on the y-axis
     return line,
 
 # Create animation with updates
