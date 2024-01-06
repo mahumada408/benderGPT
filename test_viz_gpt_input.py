@@ -29,6 +29,8 @@ def discretize_fft(fft_data, num_bands=8, num_rows=7):
 parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
 parser.add_argument('file_path', type=str, help='Path to the .wav file')
 parser.add_argument('--mode', type=str, default='full', choices=['full', 'discrete'], help='Visualization mode: full or discrete')
+parser.add_argument('--output', action='store_true', help='Enable output mode to get frame data as a list of tuples')
+
 args = parser.parse_args()
 
 # Open the .wav file
@@ -44,10 +46,6 @@ full_res_mode = args.mode == 'full'
 fig, ax = plt.subplots()
 frames_per_buffer = 512  # Adjust as needed
 x_freq = np.fft.rfftfreq(frames_per_buffer, 1 / frame_rate)
-
-# # Create a background grid of yellow points for the 7x16 matrix
-# x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
-# ax.scatter(x_grid, y_grid, color='yellow')  # Background grid in yellow
 
 # Create a background grid of yellow points for the 7x16 matrix, with black lines at -5, 0, and 5
 x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
@@ -70,12 +68,20 @@ else:
     ax.set_xlim(-8, 7)  # 8 columns of pixels mirrored
 ax.set_xlabel('Frequency')
 ax.set_ylabel('Magnitude')
-# ax.grid(True)
 
 # Function to play audio chunk
 def play_audio_chunk(chunk):
     play_obj = sa.play_buffer(chunk, channels, sample_width, frame_rate)
     play_obj.wait_done()
+
+# Function to generate frame data as a list of tuples (row, column, RGB value)
+def generate_frame_data(discretized_fft, x_positions, y_positions):
+    frame_data = []
+    for x, y in zip(x_positions, y_positions):
+        row = int(y)
+        col = int(x + 8)  # Shift column index to be non-negative
+        frame_data.append((row, col, 'red'))  # Assuming red color for FFT data points
+    return frame_data
 
 # Update function for the plot and audio
 def update_plot(frame):
@@ -89,16 +95,27 @@ def update_plot(frame):
     if data_np.shape[0] < frames_per_buffer:
         data_np = np.pad(data_np, (0, frames_per_buffer - data_np.shape[0]), 'constant', constant_values=(0, 0))
     fft_data = np.abs(np.fft.rfft(data_np)) / frames_per_buffer
-    if full_res_mode:
-        fft_data = np.concatenate((fft_data[:0:-1], fft_data))  # Symmetric FFT data
-        smoothed_fft = moving_average(fft_data, window_size=80)  # Adjust window size as needed
-        line.set_data(x_freq, smoothed_fft * 100)  # Centered around y=0
+
+    if args.output:
+        # Output mode - generate and print frame data
+        if not full_res_mode:
+            discretized_fft = discretize_fft(fft_data, num_bands=8, num_rows=7)
+            mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))  # Mirror the data
+            x_pos = np.arange(-8, 8)  # Adjusted x positions for 16 points
+            y_pos = mirrored_fft - 3.5  # Center on the y-axis
+            frame_data = generate_frame_data(mirrored_fft, x_pos, y_pos)
+            print(frame_data)  # Output the frame data
     else:
-        smoothed_fft = moving_average(fft_data, window_size=80)  # Adjust window size as needed
-        discretized_fft = discretize_fft(smoothed_fft, num_bands=8, num_rows=7)
-        mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))  # Mirror the data
-        x_pos = np.arange(-8, 8)  # Adjusted x positions for 16 points
-        line.set_data(x_pos, mirrored_fft)  # Center on the y-axis
+        if full_res_mode:
+            fft_data = np.concatenate((fft_data[:0:-1], fft_data))  # Symmetric FFT data
+            smoothed_fft = moving_average(fft_data, window_size=80)  # Adjust window size as needed
+            line.set_data(x_freq, smoothed_fft * 100)  # Centered around y=0
+        else:
+            smoothed_fft = moving_average(fft_data, window_size=80)  # Adjust window size as needed
+            discretized_fft = discretize_fft(smoothed_fft, num_bands=8, num_rows=7)
+            mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))  # Mirror the data
+            x_pos = np.arange(-8, 8)  # Adjusted x positions for 16 points
+            line.set_data(x_pos, mirrored_fft)  # Center on the y-axis
     return line,
 
 # Create animation with updates
