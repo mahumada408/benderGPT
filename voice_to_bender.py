@@ -1,7 +1,10 @@
+from time import time
 import os
+
+import elevenlabs
 import pvporcupine, pvcheetah
 from pvrecorder import PvRecorder
-from elevenlabs import generate, play, voices, Voice, VoiceSettings, set_api_key, get_api_key, User, stream
+from pygame import mixer
 from openai import OpenAI
 
 ENDPOINT_DURATION_SECONDS = 2 # 'Quiet' seconds indicating the end of audio capture
@@ -72,16 +75,20 @@ def main():
 
             print(f"GPT: {gpt_response}")
 
-            audio = generate(
+            # Generate audio from eleven labs
+            audio = elevenlabs.generate(
                 text=gpt_response,
-                voice=Voice(
+                voice=elevenlabs.Voice(
                     voice_id="NILGfKSMoeL1zMLuhhAI",
                 ),
                 model="eleven_multilingual_v2",
-                stream=True,
             )
 
-            stream(audio)
+            # Convert response to audio
+            current_time = time()
+            elevenlabs.save(audio, "/home/benderpi/bender_test.wav")
+            audio_time = time() - current_time
+            print(f"Finished generating audio in {audio_time:.2f} seconds.")
 
             user = User.from_api()
             left = user.subscription.character_limit - user.subscription.character_count
