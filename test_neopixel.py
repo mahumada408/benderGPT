@@ -1,12 +1,18 @@
 import board
 import neopixel
 import time
+import json
+import argparse
+import os
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import fcntl
 
 # Configuration for the NeoPixel strip
 PIN = board.D18  # The pin that the NeoPixel is connected to
-NUM_PIXELS = 112  # Number of pixels (7 rows x 16 columns)
 ROWS = 8
 COLUMNS = 16
+NUM_PIXELS = ROWS * COLUMNS  # Number of pixels (7 rows x 16 columns)
 BRIGHTNESS = 0.5  # Brightness level, range from 0.0 to 1.0
 
 # Create the NeoPixel object
@@ -42,17 +48,81 @@ def clear():
     pixels.fill((0, 0, 0))
     show()
 
-try:
-    while True:
-        # Example: Set the whole display to red
-        set_pixel(3, 2, (255, 255, 0))
-        show()
-        time.sleep(1)
+def read_json_file(file_path):
+    """
+    Reads a JSON file and returns the data.
 
-        # Clear the display
-        clear()
-        time.sleep(1)
+    Args:
+    file_path (str): The path to the JSON file.
 
-except KeyboardInterrupt:
-    # Clear display on exit
-    clear()
+    Returns:
+    dict: The data contained in the JSON file.
+    """
+    try:
+        with open(file_path, 'r') as file:
+            # Acquire an exclusive lock
+            fcntl.flock(file, fcntl.LOCK_EX)
+
+            data = json.load(file)
+        return data
+    except Exception as e:
+        print(f"Error reading the JSON file: {e}")
+        return None
+
+class Watcher:
+    def __init__(self, directory_to_watch):
+        self.observer = Observer()
+        self.directory_to_watch = directory_to_watch
+
+    def run(self):
+        event_handler = Handler()
+        self.observer.schedule(event_handler, self.directory_to_watch, recursive=True)
+        self.observer.start()
+        try:
+            while True:
+                time.sleep(5)
+        except:
+            self.observer.stop()
+            print("Observer Stopped")
+
+        self.observer.join()
+
+class Handler(FileSystemEventHandler):
+    @staticmethod
+    def on_created(event):
+        # This function is called when a file is created
+        if event.is_directory:
+            return None
+
+        # Reading and then deleting the file
+        file_path = event.src_path
+        print(f"File created: {file_path}")
+
+        data = read_json_file(file_path)
+        if data is not None:
+            clear()
+            print(data)
+            for pixel in data['waveform_data']:
+                print(pixel)
+                set_pixel(pixel[0], pixel[1], (255, 255, 0))
+            show()
+
+        os.remove(file_path)
+        print(f"File deleted: {file_path}")
+
+def main():
+    # Set the directory you want to monitor
+    watch_directory = "/home/benderpi/bender_in_out/"
+    w = Watcher(watch_directory)
+    w.run()
+    # data = read_json_file(args.file_path)
+    
+    # if data is not None:
+    #     print(data)
+    #     for pixel in data['waveform_data']:
+    #         print(pixel)
+    #         set_pixel(pixel[0], pixel[1], (255, 255, 0))
+    #     show()
+
+if __name__ == "__main__":
+    main()

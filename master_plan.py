@@ -1,4 +1,4 @@
-from time import time
+import time
 import os
 
 import elevenlabs
@@ -17,6 +17,8 @@ import threading
 
 from pydub import AudioSegment
 
+import json
+import fcntl
 
 ENDPOINT_DURATION_SECONDS = 2 # 'Quiet' seconds indicating the end of audio capture
 AUDIO_DEVICE_NAME = "Plugable USB Audio Device Analog Stereo"
@@ -75,12 +77,12 @@ def play_audio_chunk(chunk, channels, sample_width, frame_rate):
     play_obj = sa.play_buffer(chunk, channels, sample_width, frame_rate)
     play_obj.wait_done()
 
-def generate_frame_data(discretized_fft, x_positions, y_positions):
+def generate_frame_data(x_positions, y_positions):
     frame_data = []
     for x, y in zip(x_positions, y_positions):
         row = int(y)
-        col = int(x + 8)
-        frame_data.append((row, col, 'red'))
+        col = int(x)
+        frame_data.append((row, col))
     return frame_data
 
 def update_plot(frame, wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq):
@@ -99,7 +101,7 @@ def update_plot(frame, wf, frames_per_buffer, full_res_mode, args, fig, line, x_
         mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))
         x_pos = np.arange(-8, 8)
         y_pos = mirrored_fft - 3.5
-        frame_data = generate_frame_data(mirrored_fft, x_pos, y_pos)
+        frame_data = generate_frame_data(x_pos, y_pos)
         print(frame_data)
     elif full_res_mode:
         fft_data = np.concatenate((fft_data[:0:-1], fft_data))
@@ -113,36 +115,47 @@ def update_plot(frame, wf, frames_per_buffer, full_res_mode, args, fig, line, x_
         line.set_data(x_pos, mirrored_fft)
     return line,
 
-def reformat_wav_to_8000hz_mono(input_file_path, output_file_path):
-    # Load the audio file
-    audio = AudioSegment.from_wav(input_file_path)
+def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq):
+    data = wf.readframes(frames_per_buffer)
+    if len(data) == 0:
+        plt.close(fig)
+        print('false')
+        return False
+    threading.Thread(target=play_audio_chunk, args=(data, wf.getnchannels(), wf.getsampwidth(), wf.getframerate())).start()
+    data_np = np.frombuffer(data, dtype=np.int16) / 32768.0
+    if data_np.shape[0] < frames_per_buffer:
+        data_np = np.pad(data_np, (0, frames_per_buffer - data_np.shape[0]), 'constant', constant_values=(0, 0))
+    fft_data = np.abs(np.fft.rfft(data_np)) / frames_per_buffer
 
-    # Convert to mono and set frame rate to 8000 Hz
-    audio = audio.set_frame_rate(8000).set_channels(1)
+    if args.output and not full_res_mode:
+        discretized_fft = discretize_fft(fft_data, num_bands=8, num_rows=7)
+        mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))
+        x_pos = np.arange(0, 17)
+        y_pos = mirrored_fft
+        frame_data = generate_frame_data(x_pos, y_pos)
+        waveform = {
+            'waveform_data': frame_data,
+        }
+        file_name = "/home/benderpi/bender_in_out/waveform_data.json"
+        print('saving')
+        with open(file_name, 'w') as file:
+            # Acquire an exclusive lock
+            fcntl.flock(file, fcntl.LOCK_EX)
 
-    # Export the result
-    audio.export(output_file_path, format="wav")
-
-# Function to convert a byte stream to a WAV file
-def bytes_to_wav(byte_stream, output_filename):
-    # Assuming the byte stream is valid audio data, you would normally also need
-    # information about the audio such as sample rate, number of channels, etc.
-    # For this example, let's assume a sample rate of 44100 Hz, 2 channels (stereo), and 2 bytes per sample (16-bit audio)
-
-    # Open a new wave file for writing
-    with wave.open(output_filename, 'wb') as wav_file:
-        # Set the parameters
-        nchannels = 2
-        sampwidth = 2
-        framerate = 44100
-        nframes = len(byte_stream) // (nchannels * sampwidth)
-        comptype = 'NONE'
-        compname = 'not compressed'
-
-        wav_file.setparams((nchannels, sampwidth, framerate, nframes, comptype, compname))
-
-        # Write the audio frames (byte stream)
-        wav_file.writeframes(byte_stream)
+            json.dump(waveform, file)
+        print(frame_data)
+    elif full_res_mode:
+        fft_data = np.concatenate((fft_data[:0:-1], fft_data))
+        smoothed_fft = moving_average(fft_data, window_size=80)
+        line.set_data(x_freq, smoothed_fft * 100)
+    else:
+        smoothed_fft = moving_average(fft_data, window_size=80)
+        discretized_fft = discretize_fft(smoothed_fft, num_bands=8, num_rows=7)
+        mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))
+        x_pos = np.arange(-8, 8)
+        line.set_data(x_pos, mirrored_fft)
+    print('true')
+    return True
 
 def main():
     parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
@@ -160,59 +173,59 @@ def main():
 
         if result >= 0:
             print('keyword detected')
-            voice_transcription = capture_input()
-            print(f"voice: {voice_transcription}")
+            # voice_transcription = capture_input()
+            # print(f"voice: {voice_transcription}")
 
-            if "terminate call" in voice_transcription.lower():
-                recorder.stop()
-                break
+            # if "terminate call" in voice_transcription.lower():
+            #     recorder.stop()
+            #     break
 
-            current_time = time()
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": PROMPT+voice_transcription,
-                    }
-                ],
-                model="gpt-3.5-turbo",
-            )
-            gpt_response = chat_completion.choices[0].message.content
-            delta_time = time() - current_time
-            print(f"gpt time: {delta_time}")
+            # current_time = time()
+            # chat_completion = client.chat.completions.create(
+            #     messages=[
+            #         {
+            #             "role": "user",
+            #             "content": PROMPT+voice_transcription,
+            #         }
+            #     ],
+            #     model="gpt-3.5-turbo",
+            # )
+            # gpt_response = chat_completion.choices[0].message.content
+            # delta_time = time() - current_time
+            # print(f"gpt time: {delta_time}")
 
-            print(f"GPT: {gpt_response}")
+            # print(f"GPT: {gpt_response}")
 
-            # Generate audio from eleven labs
-            current_time = time()
-            byte_stream = elevenlabs.generate(
-                text=gpt_response,
-                voice=elevenlabs.Voice(
-                    voice_id="NILGfKSMoeL1zMLuhhAI",
-                ),
-                model="eleven_multilingual_v2",
-            )
-            delta_time = time() - current_time
-            print(f"elevenlabs time: {delta_time}")
+            # # Generate audio from eleven labs
+            # current_time = time()
+            # byte_stream = elevenlabs.generate(
+            #     text=gpt_response,
+            #     voice=elevenlabs.Voice(
+            #         voice_id="NILGfKSMoeL1zMLuhhAI",
+            #     ),
+            #     model="eleven_multilingual_v2",
+            # )
+            # delta_time = time() - current_time
+            # print(f"elevenlabs time: {delta_time}")
 
-            # Convert response to audio
-            current_time = time()
-            bender_mp3_path = "/home/benderpi/bender_test_mp3.mp3"
-            elevenlabs.save(byte_stream, bender_mp3_path)
-            # Load an MP3 file
-            audio = AudioSegment.from_file(bender_mp3_path)
+            # # Convert response to audio
+            # current_time = time()
+            # bender_mp3_path = "/home/benderpi/bender_test_mp3.mp3"
+            # elevenlabs.save(byte_stream, bender_mp3_path)
+            # # Load an MP3 file
+            # audio = AudioSegment.from_file(bender_mp3_path)
 
-            # Set the frame rate to 8000 Hz
-            audio = audio.set_frame_rate(8000)
+            # # Set the frame rate to 8000 Hz
+            # audio = audio.set_frame_rate(8000)
 
             # Export to a WAV file with the specified frame rate
             out_wav_path = "/home/benderpi/bender_wav_test.wav"
-            audio.export(out_wav_path, format="wav")
+            # audio.export(out_wav_path, format="wav")
 
             wf = wave.open(out_wav_path, 'rb')
 
-            delta_time = time() - current_time
-            print(f"mp3 -> wav time: {delta_time}")
+            # delta_time = time() - current_time
+            # print(f"mp3 -> wav time: {delta_time}")
 
 
             full_res_mode = args.mode == 'full'
@@ -241,8 +254,12 @@ def main():
             ax.set_xlabel('Frequency')
             ax.set_ylabel('Magnitude')
 
-            ani = FuncAnimation(fig, update_plot, fargs=(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq), blit=True, interval=20)
-            plt.show()
+            # ani = FuncAnimation(fig, update_plot, fargs=(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq), blit=True, interval=20)
+            # plt.show()
+
+            while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq)):
+                time.sleep(0.02)
+
 
 if __name__ == '__main__':
     main()
