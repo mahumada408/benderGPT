@@ -173,54 +173,54 @@ def main():
 
         if result >= 0:
             print('keyword detected')
-            # voice_transcription = capture_input()
-            # print(f"voice: {voice_transcription}")
+            voice_transcription = capture_input()
+            print(f"voice: {voice_transcription}")
 
-            # if "terminate call" in voice_transcription.lower():
-            #     recorder.stop()
-            #     break
+            if "terminate call" in voice_transcription.lower():
+                recorder.stop()
+                break
 
             # current_time = time()
-            # chat_completion = client.chat.completions.create(
-            #     messages=[
-            #         {
-            #             "role": "user",
-            #             "content": PROMPT+voice_transcription,
-            #         }
-            #     ],
-            #     model="gpt-3.5-turbo",
-            # )
-            # gpt_response = chat_completion.choices[0].message.content
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": PROMPT+voice_transcription,
+                    }
+                ],
+                model="gpt-3.5-turbo",
+            )
+            gpt_response = chat_completion.choices[0].message.content
             # delta_time = time() - current_time
             # print(f"gpt time: {delta_time}")
 
-            # print(f"GPT: {gpt_response}")
+            print(f"GPT: {gpt_response}")
 
-            # # Generate audio from eleven labs
+            # Generate audio from eleven labs
             # current_time = time()
-            # byte_stream = elevenlabs.generate(
-            #     text=gpt_response,
-            #     voice=elevenlabs.Voice(
-            #         voice_id="NILGfKSMoeL1zMLuhhAI",
-            #     ),
-            #     model="eleven_multilingual_v2",
-            # )
+            byte_stream = elevenlabs.generate(
+                text=gpt_response,
+                voice=elevenlabs.Voice(
+                    voice_id="NILGfKSMoeL1zMLuhhAI",
+                ),
+                model="eleven_multilingual_v2",
+            )
             # delta_time = time() - current_time
             # print(f"elevenlabs time: {delta_time}")
 
-            # # Convert response to audio
+            # Convert response to audio
             # current_time = time()
-            # bender_mp3_path = "/home/benderpi/bender_test_mp3.mp3"
-            # elevenlabs.save(byte_stream, bender_mp3_path)
-            # # Load an MP3 file
-            # audio = AudioSegment.from_file(bender_mp3_path)
+            bender_mp3_path = "/home/benderpi/bender_test_mp3.mp3"
+            elevenlabs.save(byte_stream, bender_mp3_path)
+            # Load an MP3 file
+            audio = AudioSegment.from_file(bender_mp3_path)
 
-            # # Set the frame rate to 8000 Hz
-            # audio = audio.set_frame_rate(8000)
+            # Set the frame rate to 8000 Hz
+            audio = audio.set_frame_rate(8000)
 
             # Export to a WAV file with the specified frame rate
             out_wav_path = "/home/benderpi/bender_wav_test.wav"
-            # audio.export(out_wav_path, format="wav")
+            audio.export(out_wav_path, format="wav")
 
             wf = wave.open(out_wav_path, 'rb')
 
@@ -258,7 +258,7 @@ def main():
             # plt.show()
 
             while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq)):
-                time.sleep(0.02)
+                time.sleep(0.06)
 
 
 if __name__ == '__main__':
