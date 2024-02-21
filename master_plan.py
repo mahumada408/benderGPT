@@ -20,12 +20,17 @@ from pydub import AudioSegment
 import json
 import fcntl
 
+import serial
+
+ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+ser.reset_input_buffer()
+
 ENDPOINT_DURATION_SECONDS = 2 # 'Quiet' seconds indicating the end of audio capture
 AUDIO_DEVICE_NAME = "Plugable USB Audio Device Analog Stereo"
 AUDIO_DEVICE = PvRecorder.get_available_devices().index(AUDIO_DEVICE_NAME)
 porcupine_key = os.environ.get("PORCUPINE_API_KEY")
 
-PROMPT = "You are Bender from Futurama. Respond to my query in a snarky Bender way in 100 characters or less: "
+PROMPT = "You are Bender from Futurama. Respond to my query in a Bender way in 100 characters or less, but dont go so heavy on the 'bite my shiny metal ass': "
 QUERY = "Hey bender. How did your day go?"
 
 client = OpenAI(
@@ -115,13 +120,14 @@ def update_plot(frame, wf, frames_per_buffer, full_res_mode, args, fig, line, x_
         line.set_data(x_pos, mirrored_fft)
     return line,
 
-def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq):
+def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, counter, frame_skip):
     data = wf.readframes(frames_per_buffer)
+    if counter != frame_skip:
+        return True
     if len(data) == 0:
         plt.close(fig)
-        print('false')
         return False
-    threading.Thread(target=play_audio_chunk, args=(data, wf.getnchannels(), wf.getsampwidth(), wf.getframerate())).start()
+    # threading.Thread(target=play_audio_chunk, args=(data, wf.getnchannels(), wf.getsampwidth(), wf.getframerate())).start()
     data_np = np.frombuffer(data, dtype=np.int16) / 32768.0
     if data_np.shape[0] < frames_per_buffer:
         data_np = np.pad(data_np, (0, frames_per_buffer - data_np.shape[0]), 'constant', constant_values=(0, 0))
@@ -133,17 +139,23 @@ def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq):
         x_pos = np.arange(0, 17)
         y_pos = mirrored_fft
         frame_data = generate_frame_data(x_pos, y_pos)
-        waveform = {
-            'waveform_data': frame_data,
-        }
-        file_name = "/home/benderpi/bender_in_out/waveform_data.json"
-        print('saving')
-        with open(file_name, 'w') as file:
-            # Acquire an exclusive lock
-            fcntl.flock(file, fcntl.LOCK_EX)
+        for pixel in frame_data:
+            data = f"{pixel[0]}, {pixel[1]}\n"
+            print(data)
+            ser.write(data.encode('utf-8'))
+            time.sleep(0.0035)
+        # exit(0)
+        # waveform = {
+        #     'waveform_data': frame_data,
+        # }
+        # file_name = "/home/benderpi/bender_in_out/waveform_data.json"
+        # print('saving')
+        # with open(file_name, 'w') as file:
+        #     # Acquire an exclusive lock
+        #     fcntl.flock(file, fcntl.LOCK_EX)
 
-            json.dump(waveform, file)
-        print(frame_data)
+        #     json.dump(waveform, file)
+        # print(frame_data)
     elif full_res_mode:
         fft_data = np.concatenate((fft_data[:0:-1], fft_data))
         smoothed_fft = moving_average(fft_data, window_size=80)
@@ -154,13 +166,12 @@ def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq):
         mirrored_fft = np.concatenate((discretized_fft[::-1], discretized_fft))
         x_pos = np.arange(-8, 8)
         line.set_data(x_pos, mirrored_fft)
-    print('true')
     return True
 
 def main():
     parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
-    parser.add_argument('--mode', type=str, default='full', choices=['full', 'discrete'], help='Visualization mode: full or discrete')
-    parser.add_argument('--output', action='store_true', help='Enable output mode to get frame data as a list of tuples')
+    parser.add_argument('--mode', type=str, default='discrete', choices=['full', 'discrete'], help='Visualization mode: full or discrete')
+    parser.add_argument('--output', action='store_true', default=True, help='Enable output mode to get frame data as a list of tuples')
     args = parser.parse_args()
 
     print('Listening...')
@@ -210,7 +221,7 @@ def main():
 
             # Convert response to audio
             # current_time = time()
-            bender_mp3_path = "/home/benderpi/bender_test_mp3.mp3"
+            bender_mp3_path = "/home/manuel/bender_test_mp3.mp3"
             elevenlabs.save(byte_stream, bender_mp3_path)
             # Load an MP3 file
             audio = AudioSegment.from_file(bender_mp3_path)
@@ -219,7 +230,7 @@ def main():
             audio = audio.set_frame_rate(8000)
 
             # Export to a WAV file with the specified frame rate
-            out_wav_path = "/home/benderpi/bender_wav_test.wav"
+            out_wav_path = "/home/manuel/bender_wav_test.wav"
             audio.export(out_wav_path, format="wav")
 
             wf = wave.open(out_wav_path, 'rb')
@@ -257,8 +268,19 @@ def main():
             # ani = FuncAnimation(fig, update_plot, fargs=(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq), blit=True, interval=20)
             # plt.show()
 
-            while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq)):
-                time.sleep(0.06)
+            # Load a wave file
+            wave_obj = sa.WaveObject.from_wave_file(out_wav_path)
+
+            # Play the wave file
+            play_obj = wave_obj.play()
+
+            counter = 0
+            frame_skip = 0
+            while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, counter, frame_skip)):
+                counter = counter + 1
+                time.sleep(0.01)
+                if counter == frame_skip + 1:
+                    counter = 0
 
 
 if __name__ == '__main__':
