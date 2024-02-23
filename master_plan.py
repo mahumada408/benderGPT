@@ -168,6 +168,20 @@ def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, co
         line.set_data(x_pos, mirrored_fft)
     return True
 
+def stream_openai(voice_transcription):
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": PROMPT+voice_transcription,
+            }
+        ],
+        model="gpt-3.5-turbo",
+        stream = True,
+    )
+    for chunk in chat_completion:
+        yield chunk.choices[0].message.content
+
 def main():
     parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
     parser.add_argument('--mode', type=str, default='discrete', choices=['full', 'discrete'], help='Visualization mode: full or discrete')
@@ -205,7 +219,7 @@ def main():
             # delta_time = time() - current_time
             # print(f"gpt time: {delta_time}")
 
-            print(f"GPT: {gpt_response}")
+            # print(f"GPT: {gpt_response}")
 
             # Generate audio from eleven labs
             # current_time = time()
@@ -214,7 +228,7 @@ def main():
                 voice=elevenlabs.Voice(
                     voice_id="NILGfKSMoeL1zMLuhhAI",
                 ),
-                model="eleven_multilingual_v2",
+                model="eleven_turbo_v2",
             )
             # delta_time = time() - current_time
             # print(f"elevenlabs time: {delta_time}")
