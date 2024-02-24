@@ -3,8 +3,15 @@ from cvzone.FaceDetectionModule import FaceDetector
 import cv2
 
 # Initialize the webcam
-# '2' means the third camera connected to the computer, usually 0 refers to the built-in webcam
 cap = cv2.VideoCapture(0)
+
+width  = None
+height = None
+if cap.isOpened(): 
+    # get vcap property 
+    width  = cap.get(3)  # float `width`
+    height = cap.get(4)  # float `height`
+    print(f"{width}x{height}")
 
 # Initialize the FaceDetector object
 # minDetectionCon: Minimum detection confidence threshold
@@ -42,7 +49,11 @@ while True:
             cv2.circle(img, center, 5, (255, 0, 255), cv2.FILLED)
             cvzone.putTextRect(img, f'{score}%', (x, y - 10))
             cvzone.cornerRect(img, (x, y, w, h))
-            print(center)
+            # print(center)
+            control_gain = 0.1
+            servo_angle = (center[0] - (width/2)) * control_gain
+            # print(servo_angle)
+
 
     # Display the image in a window named 'Image'
     cv2.imshow("Image", img)

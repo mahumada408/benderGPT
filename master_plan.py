@@ -21,6 +21,7 @@ import json
 import fcntl
 
 import serial
+import subprocess
 
 ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 ser.reset_input_buffer()
@@ -192,17 +193,25 @@ def main():
 
     recorder.start()
 
+    process = None
+
     while True:
         pcm = recorder.read()
         result = porcupine.process(pcm)
 
         if result >= 0:
             print('keyword detected')
+            # Start the face tracker
+            if process is None:
+                process = subprocess.Popen(['python', '/home/manuel/benderGPT/test_face_detection.py'])
+
             voice_transcription = capture_input()
             print(f"voice: {voice_transcription}")
 
             if "terminate call" in voice_transcription.lower():
                 recorder.stop()
+                if process is not None:
+                    process.terminate()
                 break
 
             # current_time = time()

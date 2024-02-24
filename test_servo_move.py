@@ -1,5 +1,16 @@
 from adafruit_servokit import ServoKit
 import time
+import socket
+
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client_socket.connect(('localhost', 12345))
+
+data = client_socket.recv(1024)  # Buffer size
+boolean_value, float_value = data.decode().split(",")
+boolean_value = boolean_value == 'True'
+float_value = float(float_value)
+
+client_socket.close()
 
 SLEEP_TIME = 0.01
 
