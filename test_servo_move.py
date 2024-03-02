@@ -3,6 +3,7 @@ import time
 import socket
 
 kit = ServoKit(channels=16)
+kit.servo[0].angle = 90
 
 class Client:
     def __init__(self, host='localhost', port=12345):
@@ -19,9 +20,11 @@ class Client:
                     print("Connection closed by server.")
                     break
                 print("Received:", data.decode('utf-8'))
-                camera_delta = float(data.decode('utf-8'))
-                control_gain = 0.5
-                kit.servo[0].angle = 90 + (camera_delta * control_gain)
+                camera_delta = float(data.decode('utf-8').split(",")[0])
+                camera_delta_y = float(data.decode('utf-8').split(",")[1])
+                control_gain = 0.2
+                kit.servo[1].angle = 90 + (camera_delta * control_gain)
+                kit.servo[2].angle = 90 + (camera_delta_y * control_gain)
 
 if __name__ == "__main__":
     client = Client()

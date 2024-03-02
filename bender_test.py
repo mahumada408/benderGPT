@@ -1,6 +1,6 @@
 import argparse
 import os
-from elevenlabs import generate, play, voices, Voice, VoiceSettings, set_api_key, get_api_key, User, stream
+from elevenlabs import generate, play, voices, Voice, VoiceSettings, set_api_key, get_api_key, User, stream, save
 from openai import OpenAI
 
 PROMPT = "You are Bender from Futurama. Respond to my query in a snarky Bender way in 100 characters or less: "
@@ -53,10 +53,11 @@ audio = generate(
     voice_id="NILGfKSMoeL1zMLuhhAI",
   ),
   model="eleven_multilingual_v2",
-  stream=True,
 )
 
-stream(audio)
+play(audio)
+bender_mp3_path = "/home/manuel/thinking_10.mp3"
+save(audio, bender_mp3_path)
 
 user = User.from_api()
 left = user.subscription.character_limit - user.subscription.character_count

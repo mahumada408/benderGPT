@@ -1,5 +1,6 @@
 import time
 import os
+import random
 
 import elevenlabs
 import pvporcupine, pvcheetah
@@ -51,6 +52,23 @@ cheetah = pvcheetah.create(
 recorder = PvRecorder(
     frame_length=512,
     device_index=AUDIO_DEVICE)
+
+done_processing_query = False
+
+def generate_response(query):
+    byte_stream = elevenlabs.generate(
+        text=query,
+        voice=elevenlabs.Voice(
+            voice_id="NILGfKSMoeL1zMLuhhAI",
+        ),
+        model="eleven_multilingual_v2",
+    )
+
+    bender_mp3_path = "/home/manuel/bender_test_mp3.mp3"
+    elevenlabs.save(byte_stream, bender_mp3_path)
+
+    global done_processing_query
+    done_processing_query = True
 
 # Speech-to-text using Picovoice's Cheetah
 def capture_input():
@@ -142,7 +160,6 @@ def update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, co
         frame_data = generate_frame_data(x_pos, y_pos)
         for pixel in frame_data:
             data = f"{pixel[0]}, {pixel[1]}\n"
-            print(data)
             ser.write(data.encode('utf-8'))
             time.sleep(0.0035)
         # exit(0)
@@ -182,6 +199,59 @@ def stream_openai(voice_transcription):
     )
     for chunk in chat_completion:
         yield chunk.choices[0].message.content
+
+def play_audio_file(args, bender_mp3_path):
+    # Load an MP3 file
+    audio = AudioSegment.from_file(bender_mp3_path)
+
+    # Set the frame rate to 8000 Hz
+    audio = audio.set_frame_rate(8000)
+
+    # Export to a WAV file with the specified frame rate
+    out_wav_path = "/home/manuel/bender_wav_test.wav"
+    audio.export(out_wav_path, format="wav")
+
+    wf = wave.open(out_wav_path, 'rb')
+
+    full_res_mode = args.mode == 'full'
+
+    fig, ax = plt.subplots()
+    frames_per_buffer = 512
+    x_freq = np.fft.rfftfreq(frames_per_buffer, 1 / wf.getframerate())
+
+    x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
+    colors = np.full(x_grid.shape, 'yellow')
+    colors[:, x_grid[0] == -5] = 'black'
+    colors[:, x_grid[0] == 0] = 'black'
+    colors[:, x_grid[0] == 5] = 'black'
+    for x, y, c in zip(x_grid.flatten(), y_grid.flatten(), colors.flatten()):
+        ax.scatter(x, y, color=c)
+
+    if full_res_mode:
+        x_freq = np.concatenate((-x_freq[:0:-1], x_freq))
+        line, = ax.plot(x_freq, np.zeros(len(x_freq)))
+        ax.set_ylim(-1, 1)
+        ax.set_xlim(-wf.getframerate() // 2, wf.getframerate() // 2)
+    else:
+        line, = ax.plot(np.zeros(16), np.zeros(16), 'ko')
+        ax.set_ylim(-1, 7)
+        ax.set_xlim(-8, 7)
+    ax.set_xlabel('Frequency')
+    ax.set_ylabel('Magnitude')
+
+    # Load a wave file
+    wave_obj = sa.WaveObject.from_wave_file(out_wav_path)
+
+    # Play the wave file
+    play_obj = wave_obj.play()
+
+    counter = 0
+    frame_skip = 0
+    while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, counter, frame_skip)):
+        counter = counter + 1
+        time.sleep(0.01)
+        if counter == frame_skip + 1:
+            counter = 0
 
 def main():
     parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
@@ -228,82 +298,36 @@ def main():
             # delta_time = time() - current_time
             # print(f"gpt time: {delta_time}")
 
-            # print(f"GPT: {gpt_response}")
-
             # Generate audio from eleven labs
             # current_time = time()
-            byte_stream = elevenlabs.generate(
-                text=gpt_response,
-                voice=elevenlabs.Voice(
-                    voice_id="NILGfKSMoeL1zMLuhhAI",
-                ),
-                model="eleven_turbo_v2",
-            )
+            # byte_stream = elevenlabs.generate(
+            #     text=gpt_response,
+            #     voice=elevenlabs.Voice(
+            #         voice_id="NILGfKSMoeL1zMLuhhAI",
+            #     ),
+            #     model="eleven_turbo_v2",
+            # )
             # delta_time = time() - current_time
             # print(f"elevenlabs time: {delta_time}")
 
             # Convert response to audio
             # current_time = time()
-            bender_mp3_path = "/home/manuel/bender_test_mp3.mp3"
-            elevenlabs.save(byte_stream, bender_mp3_path)
-            # Load an MP3 file
-            audio = AudioSegment.from_file(bender_mp3_path)
+            # bender_mp3_path = "/home/manuel/bender_test_mp3.mp3"
+            # elevenlabs.save(byte_stream, bender_mp3_path)
 
-            # Set the frame rate to 8000 Hz
-            audio = audio.set_frame_rate(8000)
+            # Start a thread to process the gpt query
+            threading.Thread(target=generate_response, args=(gpt_response,)).start()
 
-            # Export to a WAV file with the specified frame rate
-            out_wav_path = "/home/manuel/bender_wav_test.wav"
-            audio.export(out_wav_path, format="wav")
+            # play a thinking file while that finishes
+            random_thought = random.randint(1, 10)
+            play_audio_file(args, f"/home/manuel/bender_thinking/thinking_{random_thought}.mp3")
 
-            wf = wave.open(out_wav_path, 'rb')
-
-            # delta_time = time() - current_time
-            # print(f"mp3 -> wav time: {delta_time}")
-
-
-            full_res_mode = args.mode == 'full'
-
-            fig, ax = plt.subplots()
-            frames_per_buffer = 512
-            x_freq = np.fft.rfftfreq(frames_per_buffer, 1 / wf.getframerate())
-
-            x_grid, y_grid = np.meshgrid(np.arange(-8, 8), np.arange(7))
-            colors = np.full(x_grid.shape, 'yellow')
-            colors[:, x_grid[0] == -5] = 'black'
-            colors[:, x_grid[0] == 0] = 'black'
-            colors[:, x_grid[0] == 5] = 'black'
-            for x, y, c in zip(x_grid.flatten(), y_grid.flatten(), colors.flatten()):
-                ax.scatter(x, y, color=c)
-
-            if full_res_mode:
-                x_freq = np.concatenate((-x_freq[:0:-1], x_freq))
-                line, = ax.plot(x_freq, np.zeros(len(x_freq)))
-                ax.set_ylim(-1, 1)
-                ax.set_xlim(-wf.getframerate() // 2, wf.getframerate() // 2)
-            else:
-                line, = ax.plot(np.zeros(16), np.zeros(16), 'ko')
-                ax.set_ylim(-1, 7)
-                ax.set_xlim(-8, 7)
-            ax.set_xlabel('Frequency')
-            ax.set_ylabel('Magnitude')
-
-            # ani = FuncAnimation(fig, update_plot, fargs=(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq), blit=True, interval=20)
-            # plt.show()
-
-            # Load a wave file
-            wave_obj = sa.WaveObject.from_wave_file(out_wav_path)
-
-            # Play the wave file
-            play_obj = wave_obj.play()
-
-            counter = 0
-            frame_skip = 0
-            while(update_led(wf, frames_per_buffer, full_res_mode, args, fig, line, x_freq, counter, frame_skip)):
-                counter = counter + 1
-                time.sleep(0.01)
-                if counter == frame_skip + 1:
-                    counter = 0
+            while True:
+                global done_processing_query
+                if done_processing_query:
+                    play_audio_file(args, "/home/manuel/bender_test_mp3.mp3")
+                    done_processing_query = False
+                    break
 
 
 if __name__ == '__main__':

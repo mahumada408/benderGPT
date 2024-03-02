@@ -45,8 +45,8 @@ class Server:
         self.server_socket.close()
         print("Server shut down successfully.")
   
-    def send_data(self, message):
-        string_message = f"{message}"
+    def send_data(self, message_x, message_y):
+        string_message = f"{message_x}, {message_y}"
         disconnected_clients = []
         for client_socket in self.clients:
             try:
@@ -113,8 +113,9 @@ def main():
                 cvzone.cornerRect(img, (x, y, w, h))
                 # print(center)
                 camera_delta = (center[0] - (width/2))
+                camera_delta_y = (center[1] - (height/2))
                 # print(servo_angle)
-                server.send_data(camera_delta)
+                server.send_data(camera_delta, camera_delta_y)
 
 
         # Display the image in a window named 'Image'
