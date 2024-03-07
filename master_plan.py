@@ -24,6 +24,8 @@ import fcntl
 import serial
 import subprocess
 
+from spotify_player import play_spotify_song, stop_spotify
+
 ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 ser.reset_input_buffer()
 
@@ -32,7 +34,7 @@ AUDIO_DEVICE_NAME = "Plugable USB Audio Device Analog Stereo"
 AUDIO_DEVICE = PvRecorder.get_available_devices().index(AUDIO_DEVICE_NAME)
 porcupine_key = os.environ.get("PORCUPINE_API_KEY")
 
-PROMPT = "You are Bender from Futurama. Respond to my query in a Bender way in 100 characters or less, but dont go so heavy on the 'bite my shiny metal ass': "
+PROMPT = "You are Bender from Futurama. Respond to my query in a Bender way in 100 characters or less: "
 QUERY = "Hey bender. How did your day go?"
 
 client = OpenAI(
@@ -265,15 +267,19 @@ def main():
 
     process = None
 
+    playing_song = False
+
     while True:
         pcm = recorder.read()
         result = porcupine.process(pcm)
 
         if result >= 0:
             print('keyword detected')
+            if playing_song:
+                playing_song = stop_spotify()
             # Start the face tracker
-            if process is None:
-                process = subprocess.Popen(['python', '/home/manuel/benderGPT/test_face_detection.py'])
+            # if process is None:
+            #     process = subprocess.Popen(['python', '/home/manuel/benderGPT/test_face_detection.py'])
 
             voice_transcription = capture_input()
             print(f"voice: {voice_transcription}")
@@ -283,6 +289,13 @@ def main():
                 if process is not None:
                     process.terminate()
                 break
+            
+            if "stop song" in voice_transcription.lower():
+                stop_spotify()
+                continue
+            
+            if "play" in voice_transcription.lower():
+                voice_transcription = voice_transcription+"list the song and band in this format 'artist, <artist>, song, <song> - <your snarky response>'"
 
             # current_time = time()
             chat_completion = client.chat.completions.create(
@@ -295,25 +308,12 @@ def main():
                 model="gpt-3.5-turbo",
             )
             gpt_response = chat_completion.choices[0].message.content
-            # delta_time = time() - current_time
-            # print(f"gpt time: {delta_time}")
+            print(gpt_response)
 
-            # Generate audio from eleven labs
-            # current_time = time()
-            # byte_stream = elevenlabs.generate(
-            #     text=gpt_response,
-            #     voice=elevenlabs.Voice(
-            #         voice_id="NILGfKSMoeL1zMLuhhAI",
-            #     ),
-            #     model="eleven_turbo_v2",
-            # )
-            # delta_time = time() - current_time
-            # print(f"elevenlabs time: {delta_time}")
-
-            # Convert response to audio
-            # current_time = time()
-            # bender_mp3_path = "/home/manuel/bender_test_mp3.mp3"
-            # elevenlabs.save(byte_stream, bender_mp3_path)
+            spotify_query = ""
+            if "play" in voice_transcription.lower():
+                spotify_query = gpt_response.split("-")[0]
+                gpt_response = gpt_response.split("-")[1]
 
             # Start a thread to process the gpt query
             threading.Thread(target=generate_response, args=(gpt_response,)).start()
@@ -328,6 +328,9 @@ def main():
                     play_audio_file(args, "/home/manuel/bender_test_mp3.mp3")
                     done_processing_query = False
                     break
+            
+            if "play" in voice_transcription.lower():
+                playing_song = play_spotify_song(spotify_query)
 
 
 if __name__ == '__main__':

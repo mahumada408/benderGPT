@@ -45,8 +45,8 @@ class Server:
         self.server_socket.close()
         print("Server shut down successfully.")
   
-    def send_data(self, message_x, message_y):
-        string_message = f"{message_x}, {message_y}"
+    def send_data(self, string_message):
+        # string_message = f"{message_x}, {message_y}"
         disconnected_clients = []
         for client_socket in self.clients:
             try:
@@ -114,8 +114,10 @@ def main():
                 # print(center)
                 camera_delta = (center[0] - (width/2))
                 camera_delta_y = (center[1] - (height/2))
+
+                string_message = f"{width}, {height}, {center[0]}, {center[1]}"
                 # print(servo_angle)
-                server.send_data(camera_delta, camera_delta_y)
+                server.send_data(string_message)
 
 
         # Display the image in a window named 'Image'
