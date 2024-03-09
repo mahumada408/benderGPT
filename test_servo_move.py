@@ -10,12 +10,7 @@ kit.servo[0].angle = 90
 kit.servo[1].angle = 90
 kit.servo[2].angle = 90
 
-while True:
-    angle = 90 + 90 * np.sin(time.time())
-    print(angle)
-    kit.servo[0].angle = angle
-
-pid = PID(kp=0.1, ki=0.1, kd=0.01, setpoint=320)
+pid = PID(kp=0.1, ki=0.2, kd=0.0, setpoint=320)
 
 face_x = 320
 last_pid_angle = 90
@@ -25,7 +20,7 @@ def periodic_handler():
     pid_angle = 90 - np.clip(pid.update(face_x, 0.01), -90, 90)
     # low pass
     global last_pid_angle
-    alpha = 0.5
+    alpha = 0.1
     pid_angle = alpha * pid_angle + (1 - alpha) * last_pid_angle
     print(f"{face_x}, {pid_angle}")
     kit.servo[0].angle = pid_angle
