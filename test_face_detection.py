@@ -1,3 +1,4 @@
+import argparse
 import cvzone
 from cvzone.FaceDetectionModule import FaceDetector
 import cv2
@@ -64,8 +65,13 @@ class Server:
                 print(f"Error closing socket: {e}")
 
 def main():
-    server = Server()
-    server.run()
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument('--no-tracking', action='store_true', help='No face tracking')
+    args = parser.parse_args()
+
+    if not args.no_tracking:
+        server = Server()
+        server.run()
 
     width  = None
     height = None
@@ -80,12 +86,21 @@ def main():
     # modelSelection: 0 for short-range detection (2 meters), 1 for long-range detection (5 meters)
     detector = FaceDetector(minDetectionCon=0.5, modelSelection=0)
 
+    last_save_time = 0.0
+
     # Run the loop to continually get frames from the webcam
     while True:
         # Read the current frame from the webcam
         # success: Boolean, whether the frame was successfully grabbed
         # img: the captured frame
         success, img = cap.read()
+        # if time.time() - last_save_time > 1:
+        laplacian_var = cv2.Laplacian(img, cv2.CV_64F).var()
+        # print(f"Laplacian variance: {laplacian_var}")
+        if laplacian_var > 700 and time.time() - last_save_time > 0.5:
+            # Save the frame as a PNG file
+            cv2.imwrite("/home/manuel/cool_picture.png", img)
+            last_save_time = time.time()
 
         # Detect faces in the image
         # img: Updated image
@@ -115,13 +130,14 @@ def main():
                 camera_delta = (center[0] - (width/2))
                 camera_delta_y = (center[1] - (height/2))
 
-                string_message = f"{width}, {height}, {center[0]}, {center[1]}"
-                # print(servo_angle)
-                server.send_data(string_message)
+                if not args.no_tracking:
+                    string_message = f"{width}, {height}, {center[0]}, {center[1]}"
+                    # print(servo_angle)
+                    server.send_data(string_message)
 
 
         # Display the image in a window named 'Image'
-        cv2.imshow("Image", img)
+        # cv2.imshow("Image", img)
         # Wait for 1 millisecond, and keep the window open
         cv2.waitKey(1)
 

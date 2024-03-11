@@ -25,6 +25,10 @@ import serial
 import subprocess
 
 from spotify_player import play_spotify_song, stop_spotify
+from photographer import take_a_picture
+
+import base64
+import requests
 
 ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 ser.reset_input_buffer()
@@ -56,6 +60,10 @@ recorder = PvRecorder(
     device_index=AUDIO_DEVICE)
 
 done_processing_query = False
+
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
 
 def generate_response(query):
     byte_stream = elevenlabs.generate(
@@ -255,10 +263,54 @@ def play_audio_file(args, bender_mp3_path):
         if counter == frame_skip + 1:
             counter = 0
 
+def pic_request(voice_request):
+    #  Path to your image
+    # image_path = take_a_picture()
+    image_path = "/home/manuel/cool_picture.png"
+
+    # Getting the base64 string
+    base64_image = encode_image(image_path)
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    headers = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+    "model": "gpt-4-vision-preview",
+    "messages": [
+        {
+        "role": "user",
+        "content": [
+            {
+            "type": "text",
+            "text": PROMPT+voice_request
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}"
+            }
+            }
+        ]
+        }
+    ],
+    "max_tokens": 300
+    }
+
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+    print(response.json()['choices'][0]['message']['content'])
+    return response.json()['choices'][0]['message']['content']
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Symmetric FFT visualization centered on x and y axes.")
     parser.add_argument('--mode', type=str, default='discrete', choices=['full', 'discrete'], help='Visualization mode: full or discrete')
     parser.add_argument('--output', action='store_true', default=True, help='Enable output mode to get frame data as a list of tuples')
+    parser.add_argument('--no-face-detect', action='store_true', help='No face tracking')
     args = parser.parse_args()
 
     print('Listening...')
@@ -269,6 +321,15 @@ def main():
 
     playing_song = False
 
+    # Start the face tracker
+    if process is None:
+        cmd = ['python', '/home/manuel/benderGPT/test_face_detection.py']
+        print(args.no_face_detect)
+        if args.no_face_detect:
+            cmd.append('--no-tracking')
+        print(cmd)
+        process = subprocess.Popen(cmd)
+
     while True:
         pcm = recorder.read()
         result = porcupine.process(pcm)
@@ -277,12 +338,10 @@ def main():
             print('keyword detected')
             if playing_song:
                 playing_song = stop_spotify()
-            # Start the face tracker
-            # if process is None:
-            #     process = subprocess.Popen(['python', '/home/manuel/benderGPT/test_face_detection.py'])
 
             voice_transcription = capture_input()
             print(f"voice: {voice_transcription}")
+            gpt_response = None
 
             if "terminate call" in voice_transcription.lower():
                 recorder.stop()
@@ -297,17 +356,27 @@ def main():
             if "play" in voice_transcription.lower():
                 voice_transcription = voice_transcription+"list the song and band in this format 'artist, <artist>, song, <song> - <your snarky response>'"
 
-            # current_time = time()
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": PROMPT+voice_transcription,
-                    }
-                ],
-                model="gpt-3.5-turbo",
-            )
-            gpt_response = chat_completion.choices[0].message.content
+            if "take a picture" in voice_transcription.lower():
+                # if process is not None:
+                #     print("killing face detect")
+                #     process.terminate()
+                #     time.sleep(1)
+                voice_request = voice_transcription.lower().split("take a picture")[1]
+                gpt_response = pic_request(voice_request)
+                # process = subprocess.Popen(['python', '/home/manuel/benderGPT/test_face_detection.py'])
+            else:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": PROMPT+voice_transcription,
+                        }
+                    ],
+                    model="gpt-3.5-turbo",
+                )
+                gpt_response = chat_completion.choices[0].message.content
+
+
             print(gpt_response)
 
             spotify_query = ""

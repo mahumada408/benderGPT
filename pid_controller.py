@@ -28,3 +28,7 @@ class PID:
         self.previous_error = error
 
         return output
+    
+    def clear(self):
+        self.integral = 0  # Integral term
+        self.previous_error = 0  # Previous error
